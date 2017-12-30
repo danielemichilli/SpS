@@ -1,0 +1,188 @@
+#!/usr/bin/env python
+
+'''
+
+Fast Imager
+
+Written by Daniele Michilli
+
+'''
+
+
+
+import os
+import argparse
+import tarfile
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+from  matplotlib.animation import FuncAnimation
+
+
+ra = np.array([ 
+        499,  499,  622,  621,  499,  377,  376,  499,  624,  748,  744,
+        742,  620,  499,  379,  257,  254,  251,  375,  499,  625,  750,
+        873,  869,  865,  862,  740,  619,  499,  380,  259,  137,  134,
+        129,  126,  249,  374,  499,  627,  752,  876, 1000,  995,  990,
+        985,  981,  859,  738,  618,  499,  381,  261,  140,   18,   14,
+          9,    4,    0,  123,  247,  372])
+
+ 
+dec = np.array([ 
+        500,  625,  562,  437,  375,  437,  562,  750,  687,  625,  500,
+        375,  312,  250,  312,  375,  500,  625,  687,  875,  812,  750,
+        687,  562,  437,  312,  250,  187,  125,  187,  250,  312,  437,
+        562,  687,  750,  812, 1000,  937,  875,  812,  750,  625,  500,
+        375,  250,  187,  125,   62,    0,   62,  125,  187,  250,  375,
+        500,  625,  750,  812,  875,  937])
+
+ 
+parser = argparse.ArgumentParser()
+parser.add_argument('filenm', nargs=1)
+args = parser.parse_args()
+idL = args.filenm[0]
+
+folder = '/projects/lotaas/test/Daniele/out/'
+
+for sap in range(2,3):
+  DM0 = np.full([61,100],np.nan,dtype=np.float32)
+  DM1 = np.full([61,100],np.nan,dtype=np.float32)
+  DM2 = np.full([61,100],np.nan,dtype=np.float32)
+  DM3 = np.full([61,100],np.nan,dtype=np.float32)
+  
+  for beam in range(13,74):
+    
+    name = '{}_SAP{}_BEAM{}'.format(idL,sap,beam)
+    path = '{}{}/SAP{}/BEAM{}_sift/sp/'.format(folder,idL,sap,beam)
+    events_path = '{}{}_singlepulse_down.tgz'.format(path,name)
+    num = beam-13
+    #num = beam+sap*61-13
+    
+    try:
+      #Open the file
+      tar_file = tarfile.open(events_path)
+      tar_file.extractall(path)
+      tar_file.close()
+      
+      try: DM0[num] = np.fromfile(path+name+'_DM0.00_down_30s.ds',dtype=np.float32)
+      except IOError: pass
+        
+      try: DM1[num] = np.fromfile(path+name+'_DM366.87_down_30s.ds',dtype=np.float32)
+      except IOError: pass
+        
+      try: DM2[num] = np.fromfile(path+name+'_DM458.57_down_30s.ds',dtype=np.float32)
+      except IOError: pass
+        
+      try: DM3[num] = np.fromfile(path+name+'_DM546.37_down_30s.ds',dtype=np.float32)
+      except IOError: pass
+    
+      [ os.remove(path+f) for f in os.listdir(path) if f.endswith(".ds") ]
+    
+    except IOError: pass
+
+
+  for row in DM0:
+      row -= np.median(row)  
+  DM0 = DM0.T
+  for row in DM0:
+      row -= np.median(row)
+
+
+  #DM0 = DM0.astype(np.int) / np.median(DM0)+3*np.std(DM0)  #Rischio di togliere FRB!!
+
+
+  #To remove variability between beams
+  for row in DM1:
+      row -= np.median(row)
+  for row in DM2:
+      row -= np.median(row)
+  for row in DM3:
+      row -= np.median(row)
+    
+  DM1 = DM1.T
+  DM2 = DM2.T
+  DM3 = DM3.T
+  
+  #To remove variability between frames
+  for row in DM1:
+      row -= np.median(row)
+  for row in DM2:
+      row -= np.median(row)
+  for row in DM3:
+      row -= np.median(row)
+
+
+
+  #DM0 = DM0 + np.roll(DM0,-1,axis=1)
+  #DM1[ DM0 > 0] = np.median(DM1)
+  
+  #DM0 = DM0 + np.roll(DM0,-1,axis=1)
+  #DM2[ DM0 > 0] = np.median(DM2)
+  #DM3[ DM0 > 0] = np.median(DM3)
+
+
+
+  DM1 = DM1-np.nanmin(DM1)
+  DM1 = DM1/np.nanmax(DM1)
+
+  DM2 = DM2-np.nanmin(DM2)
+  DM2 = DM2/np.nanmax(DM2)
+
+  DM3 = DM3-np.nanmin(DM3)
+  DM3 = DM3/np.nanmax(DM3)
+  
+  DM1 = np.nan_to_num(DM1)
+  DM2 = np.nan_to_num(DM2)
+  DM3 = np.nan_to_num(DM3)
+
+  fig = plt.figure()
+  ax = fig.add_axes([0, 0, 0.97, 1], frameon=False)
+  ax.set_axis_off()
+
+  ax1 = fig.add_axes([0.97, 0, 1, 1], frameon=False)
+  ax1.set_axis_off()
+      
+  scat = ax.scatter(ra,dec,s=800,facecolors='none',edgecolor='none')
+
+  norm = mpl.colors.Normalize(vmin=0, vmax=1)
+  cb = mpl.colorbar.ColorbarBase(ax1,norm=norm,cmap=mpl.cm.hot_r)
+  cb.outline.set_visible(False)
+
+  [ax.annotate(str(i+13),(ra[i],dec[i]),horizontalalignment='center',verticalalignment='center') for i in range(0,61)]
+  ax.annotate(idL,(0.01,0.95),xycoords='figure fraction')
+  ax.annotate('SAP: {}'.format(sap),(0.02,0.925),xycoords='figure fraction',size='small')
+  ax.annotate('Duration: 36s',(0.02,0.90),xycoords='figure fraction',size='small')
+  t = ax.annotate('',(0.02,0.875),xycoords='figure fraction',size='small')
+  
+  #path = '{}{}/sp/FastIMG'.format(folder,idL)
+  #os.makedirs(path)
+
+  path = '/home/danielem/'
+
+  def DM1_func(frame_number):
+    color = mpl.cm.hot_r(DM1[frame_number])
+    scat.set_color(color)
+    t.set_text('Start t: {}s'.format(frame_number*36))
+
+  animation = FuncAnimation(fig, DM1_func, frames=100, interval=1000)
+  animation.save('{}/SAP{}_DM366.gif'.format(path,sap),writer='imagemagick',dpi=200,bitrate=-1)
+
+  def DM2_func(frame_number):
+    color = mpl.cm.hot_r(DM2[frame_number])
+    scat.set_color(color)
+    t.set_text('Start t: {}s'.format(frame_number*36))
+
+  animation = FuncAnimation(fig, DM2_func, frames=100, interval=1000)
+  animation.save('{}/SAP{}_DM458.gif'.format(path,sap),writer='imagemagick',dpi=200,bitrate=-1)
+
+  def DM3_func(frame_number):
+    color = mpl.cm.hot_r(DM3[frame_number])
+    scat.set_color(color)
+    t.set_text('Start t: {}s'.format(frame_number*36))
+
+  animation = FuncAnimation(fig, DM3_func, frames=100, interval=1000)
+  animation.save('{}/SAP{}_DM546.gif'.format(path,sap),writer='imagemagick',dpi=200,bitrate=-1)
+
+
+
