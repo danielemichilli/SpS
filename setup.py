@@ -1,17 +1,29 @@
-from distutils.core import setup
-from distutils.extension import Extension
-from Cython.Distutils import build_ext
-import numpy
+import setuptools
 
-ext_modules = [Extension("src.C_Funct", ["src/C_Funct.pyx"],include_dirs=[numpy.get_include()])]
 
-setup(
-  name = 'LSPs',
-  cmdclass = {'build_ext': build_ext},
-  ext_modules = ext_modules
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
+setuptools.setup(
+  name = 'sps',
+  version = "1.0",
+  author="Daniele Michilli",
+  author_email="danielemichilli@gmail.com",
+  description="Classifier for single-pulse searches in the fast radio timing field of Astronomy",
+  long_description=long_description,
+  long_description_content_type="text/markdown",
+  url="https://github.com/danielemichilli/SpS",
+  packages=setuptools.find_packages(),
+  classifiers=(
+        "Programming Language :: Python :: 2.7",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: Unix",
+    ),
+  install_requires=[
+        'python_version<3',
+        'cython>=0.28.3',
+        'matplotlib>=2.2.2',
+        'numpy>=1.14.3',
+        'pandas>=0.23.0',
+      ],
 )
-
-
-
-
-#python setup.py build_ext --inplace
