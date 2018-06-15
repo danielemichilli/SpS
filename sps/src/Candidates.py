@@ -1,11 +1,8 @@
-import logging
-
 import pandas as pd
 import numpy as np
 
 import Pulses
 import C_Funct
-import Utilities
 
 
 def Loader(pulses, args):
@@ -13,7 +10,7 @@ def Loader(pulses, args):
   # Creates a table of candidates
   #------------------------------
   
-  pulses.sort(['Sigma','Pulse'], ascending=[0,1], inplace=True)
+  pulses.sort_values(['Sigma','Rank'], ascending=[0,1], inplace=True)
   
   Repeated_candidates(pulses, args.DM_cand)
   
@@ -22,18 +19,15 @@ def Loader(pulses, args):
   pulses.Candidate.loc[cands_unique.index.get_level_values('idx')] = 2 * np.arange(cands_unique.shape[0])  #Unique candidates have even ID
   
   if not pulses[pulses.Candidate>=0].empty:
-    cands = candidates_generator(pulses[pulses.Candidate>=0].copy(), idL)
+    cands = candidates_generator(pulses[pulses.Candidate>=0].copy())
     cands['main_cand'] = 0
   
     #Unify the same repeated candidates in different beams
-    cands.sort('Sigma',ascending=True,inplace=True)
+    cands.sort_values('Sigma',ascending=True,inplace=True)
 
     C_Funct.Compare_candidates(cands.DM.astype(np.float32).values,cands.Time.astype(np.float32).values,cands.index.values,cands.main_cand.values)
     
-    cands.sort(['main_cand', 'Sigma'], ascending=[1,0], inplace=True)
-    if not args.no_store: cands.to_hdf(args.store_name, 'candidates')
-    cands = cands[cands.main_cand == 0]
-    cands.sort('Sigma', inplace=True, ascending=False)
+    cands.sort_values(['main_cand', 'Sigma'], ascending=[1,0], inplace=True)
 
   else: cands = pd.DataFrame()
   
@@ -58,7 +52,7 @@ def Repeated_candidates(pulses, span):
   # Assign the same candidate code to repeated pulses
   i = 1
   while puls_beam.shape[0] > 0:
-    DM = puls_beam.DM[puls_beam.top_SNR.argmax()]
+    DM = puls_beam.DM[puls_beam.top_SNR.idxmax()]
     selected_pulses = puls_beam.Candidate[(puls_beam.DM >= DM - span) & (puls_beam.DM <= DM + span)]
     if selected_pulses.shape[0] > 1:
       pulses.Candidate.loc[selected_pulses.index] = 1 + 2 * i #Repeated candidates have odd ID
@@ -70,7 +64,7 @@ def Repeated_candidates(pulses, span):
 
 def period(x):
   if x.size<=1: return 0
-  else: return rrat_period(x)[0]
+  else: return rrat_period(x)
 
 
 def rrat_period(times, numperiods=20000):
@@ -94,14 +88,14 @@ def candidates_generator(pulses):
   pulses['Period'] = pulses.Time
   pulses['Period_err'] = pulses.Time
   
-  cands = pulses.groupby('Candidate',as_index=False,sort=False).agg({'Sigma':np.sum,'N_events':np.size,'DM':np.mean,'Time':np.min,'Period':period,'Pulse':np.max})
+  cands = pulses.groupby('Candidate',as_index=False,sort=False).agg({'Sigma':np.sum,'N_events':np.size,'DM':np.mean,'Time':np.min,'Period':period,'Rank':np.max})
   
   cands = cands.astype(np.float32)
-  cands[['N_events','Pulse']] = cands[['N_events','Pulse']].astype(np.int16)
+  cands[['N_events','Rank']] = cands[['N_events','Rank']].astype(np.int16)
   
   cands.index = cands.Candidate.astype(int)
   cands.index.name = 'idx'
-  cands.rename(columns={'N_events': 'N_pulses', 'Pulse': 'Rank'}, inplace=True)
+  cands.rename(columns={'N_events': 'N_pulses'}, inplace=True)
   cands = cands.drop('Candidate',axis=1)
   cands.Time[cands.N_pulses>1] = 0
 

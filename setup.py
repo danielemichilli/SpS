@@ -25,5 +25,7 @@ setuptools.setup(
         'matplotlib>=2.2.2',
         'numpy>=1.14.3',
         'pandas>=0.23.0',
+        'scipy>=0.19.1',
+        'astropy>=2.0.2',
       ],
 )

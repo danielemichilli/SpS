@@ -74,11 +74,14 @@ class PsrfitsFile(object):
         self.header = self.fits[0].header # Primary HDU
         self.nbits = self.specinfo.bits_per_sample
         self.nchan = self.specinfo.num_channels
+        self.npoln = self.specinfo.num_polns
+        self.poln_order = self.specinfo.poln_order
         self.nsamp_per_subint = self.specinfo.spectra_per_subint
         self.nsubints = self.specinfo.num_subint[0]
         self.freqs = self.fits['SUBINT'].data[0]['DAT_FREQ'] 
         self.frequencies = self.freqs # Alias
         self.tsamp = self.specinfo.dt
+        self.nspec = self.specinfo.N
 
     def read_subint(self, isub, apply_weights=True, apply_scales=True, \
                     apply_offsets=True):
@@ -99,48 +102,39 @@ class PsrfitsFile(object):
                 data: Subint data with scales, weights, and offsets
                      applied in float32 dtype with shape (nsamps,nchan).
         """ 
-        subintdata = self.fits['SUBINT'].data[isub]['DATA']
-        
-        #######################################
-        ##Temporary changes by Daniele Michilli
-        #if subintdata.shape[1] > 1:
-        #  apply_weights = apply_scales = apply_offsets = False
-        #######################################
-        
-        shp = subintdata.squeeze().shape
-        if ((self.nbits < 8) and \
-            (shp[0] != self.nsamp_per_subint) and \
-            (shp[1] != self.nchan * self.nbits / 8)):
-            subintdata = subintdata.reshape(self.nsamp_per_subint,
-                                            self.nchan * self.nbits / 8)
-        if self.nbits == 4:
-            data = unpack_4bit(subintdata)
-        elif self.nbits == 2:
-            data = unpack_2bit(subintdata)
+        sdata = self.fits['SUBINT'].data[isub]['DATA']
+        shp = sdata.squeeze().shape
+        if self.nbits < 8: # Unpack the bytes data
+            if (shp[0] != self.nsamp_per_subint) and \
+                    (shp[1] != self.nchan * self.nbits / 8):
+                sdata = sdata.reshape(self.nsamp_per_subint,
+                                      self.nchan * self.nbits / 8)
+            if self.nbits == 4: data = unpack_4bit(sdata)
+            elif self.nbits == 2: data = unpack_2bit(sdata)
+            else: data = np.asarray(sdata)
         else:
-            data = np.array(subintdata)
-        if apply_offsets:
-            offsets = self.get_offsets(isub)
-        else:
-            offsets = 0
-        if apply_scales:
-            scales = self.get_scales(isub)
-        else:
-            scales = 1
-        if apply_weights:
-            weights = self.get_weights(isub)
-        else:
-            weights = 1
-            
-        #######################################
-        #Temporary changes by Daniele Michilli
-        #if subintdata.shape[1] > 1:
-        #  data = data[:,:1,:,:] + data[:,1:2,:,:]
-        #######################################
-            
-        data = data.reshape((self.nsamp_per_subint, self.nchan))
-        data_wso = ((data * scales) + offsets) * weights
-        return data_wso
+            # Handle 4-poln GUPPI/PUPPI data
+            if (len(shp)==3 and shp[1]==self.npoln and
+                self.poln_order=="AABBCRCI"):
+                warnings.warn("Polarization is AABBCRCI, summing AA and BB")
+                data = np.zeros((self.nsamp_per_subint,
+                                 self.nchan), dtype=np.float32)
+                data += sdata[:,0,:].squeeze()
+                data += sdata[:,1,:].squeeze()
+            elif (len(shp)==3 and shp[1]==self.npoln and
+                self.poln_order=="IQUV"):
+                warnings.warn("Polarization is IQUV, just using Stokes I")
+                data = np.zeros((self.nsamp_per_subint,
+                                 self.nchan), dtype=np.float32)
+                data += sdata[:,0,:].squeeze()
+            else:
+                data = np.asarray(sdata)
+        data = data.reshape((self.nsamp_per_subint, 
+                             self.nchan)).astype(np.float32)
+        if apply_scales: data *= self.get_scales(isub)[:self.nchan]
+        if apply_offsets: data += self.get_offsets(isub)[:self.nchan]
+        if apply_weights: data *= self.get_weights(isub)[:self.nchan]
+        return data
 
     def get_weights(self, isub):
         """Return weights for a particular subint.
@@ -337,6 +331,7 @@ class SpectraInfo:
 
             # Now pull stuff from the columns
             subint_hdu = hdus['SUBINT']
+            first_subint = subint_hdu.data[0]
             # Identify the OFFS_SUB column number
             if 'OFFS_SUB' not in subint_hdu.columns.names:
                 warnings.warn("Can't find the 'OFFS_SUB' column!")
@@ -365,7 +360,7 @@ class SpectraInfo:
                 colnum = subint_hdu.columns.names.index('TEL_AZ')
                 if ii==0:
                     self.tel_az_col = colnum
-                    self.azimuth = subint_hdu.data[0]['TEL_AZ']
+                    self.azimuth = first_subint['TEL_AZ']
 
             # Telescope zenith angle
             if 'TEL_ZEN' not in subint_hdu.columns.names:
@@ -374,14 +369,14 @@ class SpectraInfo:
                 colnum = subint_hdu.columns.names.index('TEL_ZEN')
                 if ii==0:
                     self.tel_zen_col = colnum
-                    self.zenith_ang = subint_hdu.data[0]['TEL_ZEN']
+                    self.zenith_ang = first_subint['TEL_ZEN']
 
             # Observing frequencies
             if 'DAT_FREQ' not in subint_hdu.columns.names:
                 warnings.warn("Can't find the channel freq column, 'DAT_FREQ'!")
             else:
                 colnum = subint_hdu.columns.names.index('DAT_FREQ')
-                freqs = subint_hdu.data[0]['DAT_FREQ']
+                freqs = first_subint['DAT_FREQ']
                 if ii==0:
                     self.freqs_col = colnum
                     self.df = freqs[1]-freqs[0]
@@ -411,7 +406,7 @@ class SpectraInfo:
                     self.dat_wts_col = colnum
                 elif self.dat_wts_col != colnum:
                     warnings.warn("'DAT_WTS column changes between files 0 and %d!" % ii)
-                if np.any(subint_hdu.data[0]['DAT_WTS'] != 1.0):
+                if np.any(first_subint['DAT_WTS'] != 1.0):
                     self.need_weight = True
                 
             # Data offsets
@@ -423,7 +418,7 @@ class SpectraInfo:
                     self.dat_offs_col = colnum
                 elif self.dat_offs_col != colnum:
                     warnings.warn("'DAT_OFFS column changes between files 0 and %d!" % ii)
-                if np.any(subint_hdu.data[0]['DAT_OFFS'] != 0.0):
+                if np.any(first_subint['DAT_OFFS'] != 0.0):
                     self.need_offset = True
 
             # Data scalings
@@ -435,7 +430,7 @@ class SpectraInfo:
                     self.dat_scl_col = colnum
                 elif self.dat_scl_col != colnum:
                     warnings.warn("'DAT_SCL' column changes between files 0 and %d!" % ii)
-                if np.any(subint_hdu.data[0]['DAT_SCL'] != 1.0):
+                if np.any(first_subint['DAT_SCL'] != 1.0):
                     self.need_scale = True
 
             # Comute the samples per file and the amount of padding

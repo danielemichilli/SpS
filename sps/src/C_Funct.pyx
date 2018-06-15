@@ -7,26 +7,22 @@
 #
 #############################
 
-#Installation: sudo python setup.py build_ext --inplace
-
 cimport cython
-from Parameters import *
 
 #---------------------------------
 # Gives a pulse-code to each event
 #---------------------------------
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def Get_Group(float[::1] DM not None,
-          float[::1] Sigma not None,
-          float[::1] Time not None,
-          float[::1] Duration not None,
-          long[::1] Pulse not None):
+def Get_Group(double[::1] DM not None,
+          double[::1] Sigma not None,
+          double[::1] Time not None,
+          long[::1] Pulse not None,
+          float durat,
+          unsigned int n_steps):
   
   cdef:
     unsigned int i, j, k, j_min, j_max, empty, SNR_max
-    unsigned int n_steps = STEPS_GROUP
-    float durat = DURAT_GROUP
     unsigned int code = 0
     unsigned int dim = len(DM)
     float step, step_min, step_max, dDM, DM_min

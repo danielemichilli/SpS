@@ -302,7 +302,6 @@ class Spectra(object):
 
             *** Trimming is irreversible ***
         """
-        bins = int(bins)
         assert bins < self.numspectra
         if bins == 0:
             return
@@ -333,9 +332,6 @@ class Spectra(object):
         new_num_spectra = self.numspectra/factor
         num_to_trim = self.numspectra%factor
         self.trim(num_to_trim)
- 
-        print self.numspectra, factor
-
         self.data = np.array(np.column_stack([np.sum(subint, axis=1) for \
                         subint in np.hsplit(self.data,new_num_spectra)]))
         self.numspectra = new_num_spectra
