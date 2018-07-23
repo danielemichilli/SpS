@@ -24,7 +24,7 @@ def main(args, vers=None):
     with pd.HDFStore(args.filename) as store:
       db_keys = store.keys()
     file_type = 'hdf5'
-  except IOError:
+  except (IOError, HDF5ExtError) as e:
     events = Events.Loader(args)
     file_type = 'sp'
  
