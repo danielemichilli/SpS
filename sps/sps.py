@@ -9,8 +9,7 @@ import pandas as pd
 pd.options.mode.chained_assignment = None
 
 import warnings
-warnings.filterwarnings("error")
-
+#warnings.filterwarnings("error")
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 
